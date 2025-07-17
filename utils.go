@@ -549,4 +549,115 @@ func isTextContent(filename string) bool {
 	}
 	
 	return true
+}
+
+// Cat选项
+type CatOptions struct {
+	ShowLineNumbers   bool // -n 显示行号
+	ShowNonEmpty      bool // -b 显示非空行的行号
+	ShowEnds          bool // -E 在行尾显示$符号
+	ShowTabs          bool // -T 显示制表符为^I
+	ShowAll           bool // -A 显示所有字符 (相当于-vET)
+	ShowNonPrinting   bool // -v 显示非打印字符
+}
+
+// Cat文件内容
+func catFile(filename string, options *CatOptions) error {
+	file, err := os.Open(filename)
+	if err != nil {
+		return fmt.Errorf("无法打开文件 %s: %v", filename, err)
+	}
+	defer file.Close()
+	
+	reader := bufio.NewReader(file)
+	lineNum := 0
+	
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			if err == io.EOF {
+				// 处理文件末尾没有换行符的情况
+				if len(line) > 0 {
+					printCatLine(line, lineNum+1, options, false)
+				}
+				break
+			}
+			return fmt.Errorf("读取文件错误: %v", err)
+		}
+		
+		lineNum++
+		hasNewline := strings.HasSuffix(line, "\n")
+		if hasNewline {
+			line = line[:len(line)-1] // 移除换行符
+		}
+		
+		printCatLine(line, lineNum, options, hasNewline)
+	}
+	
+	return nil
+}
+
+// 打印cat行
+func printCatLine(line string, lineNum int, options *CatOptions, hasNewline bool) {
+	var output strings.Builder
+	
+	// 处理行号显示
+	if options.ShowLineNumbers {
+		output.WriteString(fmt.Sprintf("%6d\t", lineNum))
+	} else if options.ShowNonEmpty && strings.TrimSpace(line) != "" {
+		output.WriteString(fmt.Sprintf("%6d\t", lineNum))
+	}
+	
+	// 处理特殊字符显示
+	processedLine := line
+	if options.ShowAll || options.ShowTabs || options.ShowNonPrinting {
+		processedLine = processSpecialChars(line, options)
+	}
+	
+	output.WriteString(processedLine)
+	
+	// 处理行尾显示
+	if options.ShowAll || options.ShowEnds {
+		if hasNewline {
+			output.WriteString("$")
+		}
+	}
+	
+	fmt.Println(output.String())
+}
+
+// 处理特殊字符
+func processSpecialChars(line string, options *CatOptions) string {
+	if !options.ShowAll && !options.ShowTabs && !options.ShowNonPrinting {
+		return line
+	}
+	
+	var result strings.Builder
+	for _, char := range line {
+		if options.ShowAll || options.ShowTabs {
+			if char == '\t' {
+				result.WriteString("^I")
+				continue
+			}
+		}
+		
+		if options.ShowAll || options.ShowNonPrinting {
+			if char < 32 && char != '\t' && char != '\n' {
+				if char < 27 {
+					result.WriteString(fmt.Sprintf("^%c", char+64))
+				} else {
+					result.WriteString(fmt.Sprintf("^%c", char+64))
+				}
+				continue
+			}
+			if char == 127 {
+				result.WriteString("^?")
+				continue
+			}
+		}
+		
+		result.WriteRune(char)
+	}
+	
+	return result.String()
 } 

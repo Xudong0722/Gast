@@ -33,6 +33,7 @@ func printHelp() {
     find           查找文件 <目录> <模式>
     analyze        分析目录 <目录>
     process        并发处理文件 <目录> <工作线程数>
+    cat            显示文件内容 <文件1> [文件2] ...
     grep           在文件中搜索文本 <模式> [文件/目录]
     interactive    交互模式
 
@@ -51,10 +52,11 @@ func printHelp() {
     %s find . ".go"
     %s analyze /tmp
     %s process . 4
+    %s cat file.txt
     %s grep "func main" .
     %s interactive
 
-`, name, name, name, name, name, name, name, name, name, name, name, name, name)
+`, name, name, name, name, name, name, name, name, name, name, name, name, name, name, name)
 }
 
 // 打印系统信息

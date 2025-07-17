@@ -82,7 +82,7 @@ func interactiveMode() {
 		
 		// 未知命令
 		fmt.Printf("未知命令: %s\n", input)
-		fmt.Println("可用命令: info, version, config, benchmark, hash, url, find, analyze, process, grep, quit")
+		fmt.Println("可用命令: info, version, config, benchmark, hash, url, find, analyze, process, cat, grep, quit")
 	}
 }
 
