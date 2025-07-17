@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"runtime"
 	"time"
 )
@@ -25,6 +26,7 @@ func printHelp() {
     help           显示帮助信息
     info           显示系统信息
     benchmark      运行性能测试
+    color-test     测试颜色支持
     config         配置管理 (init|show)
     hash           计算文件哈希 <文件> <类型:md5|sha256>
     url            测试URL连接 <URL>
@@ -42,6 +44,7 @@ func printHelp() {
     %s version
     %s info
     %s benchmark
+    %s color-test
     %s config init
     %s hash example.txt md5
     %s url https://github.com
@@ -104,7 +107,43 @@ func handleBasicCommands(subcommand string) bool {
 	case "benchmark":
 		runBenchmark()
 		return true
+	case "color-test":
+		colorTest()
+		return true
 	default:
 		return false
+	}
+}
+
+// 颜色测试函数
+func colorTest() {
+	fmt.Println("=== 颜色支持测试 ===")
+	fmt.Printf("操作系统: %s\n", runtime.GOOS)
+	fmt.Printf("是否为终端: %t\n", isTerminal(os.Stdout))
+	fmt.Printf("颜色支持: %t\n", isTerminalColorSupported())
+	
+	// 环境变量信息
+	fmt.Println("\n环境变量:")
+	fmt.Printf("TERM=%s\n", os.Getenv("TERM"))
+	fmt.Printf("COLORTERM=%s\n", os.Getenv("COLORTERM"))
+	fmt.Printf("WT_SESSION=%s\n", os.Getenv("WT_SESSION"))
+	fmt.Printf("ConEmuANSI=%s\n", os.Getenv("ConEmuANSI"))
+	
+	// 测试不同的颜色选项
+	fmt.Println("\n颜色选项测试:")
+	fmt.Printf("--color=auto: %t\n", shouldUseColor("auto"))
+	fmt.Printf("--color=always: %t\n", shouldUseColor("always"))
+	fmt.Printf("--color=never: %t\n", shouldUseColor("never"))
+	
+	// 显示颜色样例
+	fmt.Println("\n颜色样例:")
+	if shouldUseColor("auto") {
+		fmt.Printf("文件名: %s示例.txt%s\n", ColorPurple, ColorReset)
+		fmt.Printf("行号: %s42%s\n", ColorGreen, ColorReset)
+		fmt.Printf("匹配文本: %s%s匹配内容%s\n", ColorRed, ColorBold, ColorReset)
+	} else {
+		fmt.Println("文件名: 示例.txt")
+		fmt.Println("行号: 42")
+		fmt.Println("匹配文本: [匹配内容]")
 	}
 } 

@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -31,14 +32,37 @@ const (
 
 // 检查终端是否支持颜色
 func isTerminalColorSupported() bool {
-	// 检查TERM环境变量
-	term := os.Getenv("TERM")
-	if term == "" || term == "dumb" {
+	// 检查是否是终端
+	if !isTerminal(os.Stdout) {
 		return false
 	}
 	
-	// 检查是否是终端
-	if !isTerminal(os.Stdout) {
+	// Windows平台特殊处理
+	if runtime.GOOS == "windows" {
+		// 检查是否是Windows Terminal或新版本的CMD/PowerShell
+		colorterm := os.Getenv("COLORTERM")
+		if colorterm != "" {
+			return true
+		}
+		
+		// 检查WT_SESSION环境变量（Windows Terminal）
+		if os.Getenv("WT_SESSION") != "" {
+			return true
+		}
+		
+		// 检查ConEmu环境变量
+		if os.Getenv("ConEmuANSI") == "ON" {
+			return true
+		}
+		
+		// 对于传统的Windows CMD/PowerShell，检查是否支持ANSI
+		// 如果没有特殊环境变量，我们假设支持（现代Windows版本都支持）
+		return true
+	}
+	
+	// 非Windows平台，检查TERM环境变量
+	term := os.Getenv("TERM")
+	if term == "" || term == "dumb" {
 		return false
 	}
 	
@@ -51,6 +75,15 @@ func isTerminal(f *os.File) bool {
 	if err != nil {
 		return false
 	}
+	
+	// Windows平台特殊处理
+	if runtime.GOOS == "windows" {
+		// 在Windows上，检查是否是字符设备
+		mode := fi.Mode()
+		return mode&os.ModeCharDevice != 0
+	}
+	
+	// 非Windows平台，使用标准检查
 	return fi.Mode()&os.ModeCharDevice != 0
 }
 
