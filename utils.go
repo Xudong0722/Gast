@@ -1,0 +1,414 @@
+package main
+
+import (
+	"bufio"
+	"crypto/md5"
+	"crypto/sha256"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"os"
+	"path/filepath"
+	"regexp"
+	"strings"
+	"sync"
+	"time"
+)
+
+// Grep选项
+type GrepOptions struct {
+	IgnoreCase   bool
+	ShowLineNum  bool
+	Recursive    bool
+	InvertMatch  bool
+	CountOnly    bool
+	FilesOnly    bool
+}
+
+// Grep搜索结果
+type GrepResult struct {
+	Filename string
+	LineNum  int
+	Line     string
+	Matches  []string
+}
+
+// 文件哈希计算
+func calculateFileHash(filename string, hashType string) (string, error) {
+	file, err := os.Open(filename)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	switch hashType {
+	case "md5":
+		hash := md5.New()
+		if _, err := io.Copy(hash, file); err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("%x", hash.Sum(nil)), nil
+	case "sha256":
+		hash := sha256.New()
+		if _, err := io.Copy(hash, file); err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("%x", hash.Sum(nil)), nil
+	default:
+		return "", fmt.Errorf("不支持的哈希类型: %s", hashType)
+	}
+}
+
+// URL验证和测试
+func testURL(target string) {
+	// 验证URL格式
+	parsedURL, err := url.Parse(target)
+	if err != nil {
+		fmt.Printf("无效的URL格式: %v\n", err)
+		return
+	}
+
+	if parsedURL.Scheme == "" {
+		target = "http://" + target
+	}
+
+	fmt.Printf("测试URL: %s\n", target)
+	
+	start := time.Now()
+	resp, err := http.Get(target)
+	duration := time.Since(start)
+
+	if err != nil {
+		fmt.Printf("❌ 请求失败: %v\n", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	fmt.Printf("✅ 响应时间: %v\n", duration)
+	fmt.Printf("   状态码: %d %s\n", resp.StatusCode, resp.Status)
+	fmt.Printf("   内容长度: %d bytes\n", resp.ContentLength)
+	fmt.Printf("   内容类型: %s\n", resp.Header.Get("Content-Type"))
+	fmt.Printf("   服务器: %s\n", resp.Header.Get("Server"))
+}
+
+// 文件查找
+func findFiles(dir string, pattern string) {
+	fmt.Printf("在 %s 中查找匹配 '%s' 的文件:\n", dir, pattern)
+	
+	count := 0
+	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		
+		if !info.IsDir() && strings.Contains(strings.ToLower(info.Name()), strings.ToLower(pattern)) {
+			fmt.Printf("  %s (%d bytes)\n", path, info.Size())
+			count++
+		}
+		return nil
+	})
+	
+	if err != nil {
+		fmt.Printf("查找失败: %v\n", err)
+		return
+	}
+	
+	fmt.Printf("共找到 %d 个文件\n", count)
+}
+
+// 文件大小统计
+func analyzeDirectory(dir string) {
+	fmt.Printf("分析目录: %s\n", dir)
+	
+	var totalSize int64
+	var fileCount int
+	var dirCount int
+	
+	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		
+		if info.IsDir() {
+			dirCount++
+		} else {
+			fileCount++
+			totalSize += info.Size()
+		}
+		return nil
+	})
+	
+	if err != nil {
+		fmt.Printf("分析失败: %v\n", err)
+		return
+	}
+	
+	fmt.Printf("结果:\n")
+	fmt.Printf("  文件数: %d\n", fileCount)
+	fmt.Printf("  目录数: %d\n", dirCount)
+	fmt.Printf("  总大小: %.2f MB\n", float64(totalSize)/1024/1024)
+}
+
+// 并发文件处理示例
+func processFiles(dir string, workers int) {
+	fmt.Printf("使用 %d 个工作线程处理文件...\n", workers)
+	
+	filesChan := make(chan string, 100)
+	resultsChan := make(chan string, 100)
+	var wg sync.WaitGroup
+	
+	// 启动工作线程
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			for filename := range filesChan {
+				// 模拟文件处理
+				time.Sleep(100 * time.Millisecond)
+				resultsChan <- fmt.Sprintf("工作线程 %d 处理: %s", id, filename)
+			}
+		}(i)
+	}
+	
+	// 发送文件到工作线程
+	go func() {
+		defer close(filesChan)
+		filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+			if !info.IsDir() {
+				filesChan <- path
+			}
+			return nil
+		})
+	}()
+	
+	// 收集结果
+	go func() {
+		wg.Wait()
+		close(resultsChan)
+	}()
+	
+	count := 0
+	for result := range resultsChan {
+		fmt.Printf("  %s\n", result)
+		count++
+	}
+	
+	fmt.Printf("处理完成，共处理 %d 个文件\n", count)
+}
+
+
+
+// Grep搜索主函数
+func grepSearch(pattern string, targets []string, options *GrepOptions) {
+	// 编译正则表达式
+	var regex *regexp.Regexp
+	var err error
+	
+	if options.IgnoreCase {
+		regex, err = regexp.Compile("(?i)" + pattern)
+	} else {
+		regex, err = regexp.Compile(pattern)
+	}
+	
+	if err != nil {
+		fmt.Printf("正则表达式编译错误: %v\n", err)
+		return
+	}
+	
+	totalMatches := 0
+	
+	for _, target := range targets {
+		matches := processGrepTarget(target, regex, options)
+		totalMatches += matches
+	}
+	
+	if options.CountOnly {
+		fmt.Printf("总匹配数: %d\n", totalMatches)
+	}
+}
+
+// 处理grep目标（文件或目录）
+func processGrepTarget(target string, regex *regexp.Regexp, options *GrepOptions) int {
+	info, err := os.Stat(target)
+	if err != nil {
+		fmt.Printf("错误: %v\n", err)
+		return 0
+	}
+	
+	if info.IsDir() {
+		if options.Recursive {
+			return grepInDirectory(target, regex, options)
+		} else {
+			fmt.Printf("跳过目录: %s (使用 -r 选项递归搜索)\n", target)
+			return 0
+		}
+	} else {
+		return grepInFile(target, regex, options)
+	}
+}
+
+// 在目录中递归搜索
+func grepInDirectory(dir string, regex *regexp.Regexp, options *GrepOptions) int {
+	totalMatches := 0
+	
+	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		
+		if !info.IsDir() && isTextFile(path) {
+			matches := grepInFile(path, regex, options)
+			totalMatches += matches
+		}
+		
+		return nil
+	})
+	
+	if err != nil {
+		fmt.Printf("遍历目录错误: %v\n", err)
+	}
+	
+	return totalMatches
+}
+
+// 在单个文件中搜索
+func grepInFile(filename string, regex *regexp.Regexp, options *GrepOptions) int {
+	file, err := os.Open(filename)
+	if err != nil {
+		fmt.Printf("打开文件错误 %s: %v\n", filename, err)
+		return 0
+	}
+	defer file.Close()
+	
+	scanner := bufio.NewScanner(file)
+	lineNum := 0
+	matchCount := 0
+	hasMatch := false
+	
+	for scanner.Scan() {
+		lineNum++
+		line := scanner.Text()
+		
+		matches := regex.FindAllString(line, -1)
+		isMatch := len(matches) > 0
+		
+		// 处理反向匹配
+		if options.InvertMatch {
+			isMatch = !isMatch
+		}
+		
+		if isMatch {
+			matchCount++
+			hasMatch = true
+			
+			if !options.CountOnly && !options.FilesOnly {
+				result := &GrepResult{
+					Filename: filename,
+					LineNum:  lineNum,
+					Line:     line,
+					Matches:  matches,
+				}
+				printGrepResult(result, options)
+			}
+		}
+	}
+	
+	if err := scanner.Err(); err != nil {
+		fmt.Printf("读取文件错误 %s: %v\n", filename, err)
+	}
+	
+	// 输出统计信息
+	if options.CountOnly {
+		fmt.Printf("%s: %d\n", filename, matchCount)
+	} else if options.FilesOnly && hasMatch {
+		fmt.Println(filename)
+	}
+	
+	return matchCount
+}
+
+// 打印grep结果
+func printGrepResult(result *GrepResult, options *GrepOptions) {
+	var output strings.Builder
+	
+	// 文件名
+	output.WriteString(result.Filename)
+	
+	// 行号
+	if options.ShowLineNum {
+		output.WriteString(fmt.Sprintf(":%d", result.LineNum))
+	}
+	
+	output.WriteString(": ")
+	
+	// 高亮匹配的文本
+	line := result.Line
+	if len(result.Matches) > 0 && !options.InvertMatch {
+		for _, match := range result.Matches {
+			// 简单的高亮显示（用方括号包围）
+			line = strings.ReplaceAll(line, match, "["+match+"]")
+		}
+	}
+	
+	output.WriteString(line)
+	fmt.Println(output.String())
+}
+
+// 判断是否为文本文件
+func isTextFile(filename string) bool {
+	// 基于文件扩展名的简单判断
+	ext := strings.ToLower(filepath.Ext(filename))
+	textExtensions := []string{
+		".txt", ".md", ".go", ".py", ".java", ".c", ".cpp", ".h", ".hpp",
+		".js", ".ts", ".html", ".css", ".json", ".xml", ".yaml", ".yml",
+		".sh", ".bash", ".zsh", ".fish", ".ps1", ".bat", ".cmd",
+		".sql", ".php", ".rb", ".rs", ".swift", ".kt", ".scala",
+		".r", ".m", ".pl", ".lua", ".vim", ".emacs", ".cfg", ".conf",
+		".ini", ".toml", ".properties", ".log", ".csv", ".tsv",
+	}
+	
+	for _, validExt := range textExtensions {
+		if ext == validExt {
+			return true
+		}
+	}
+	
+	// 如果没有扩展名，检查文件内容
+	if ext == "" {
+		return isTextContent(filename)
+	}
+	
+	return false
+}
+
+// 检查文件内容是否为文本
+func isTextContent(filename string) bool {
+	file, err := os.Open(filename)
+	if err != nil {
+		return false
+	}
+	defer file.Close()
+	
+	// 读取前512字节来判断
+	buffer := make([]byte, 512)
+	n, err := file.Read(buffer)
+	if err != nil && err != io.EOF {
+		return false
+	}
+	
+	// 检查是否包含二进制字符
+	for i := 0; i < n; i++ {
+		if buffer[i] == 0 {
+			return false
+		}
+		if buffer[i] < 32 && buffer[i] != 9 && buffer[i] != 10 && buffer[i] != 13 {
+			return false
+		}
+	}
+	
+	return true
+} 
