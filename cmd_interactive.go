@@ -73,6 +73,7 @@ func interactiveMode() {
 					CountOnly:   false,
 					FilesOnly:   false,
 					Color:       "auto",
+					Text:        false,
 				}
 				grepSearch(pattern, targets, options)
 			}

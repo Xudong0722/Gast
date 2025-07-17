@@ -17,6 +17,7 @@ func handleGrepCommand(args []string) {
 		fmt.Println("  -c, --count          只显示匹配行数")
 		fmt.Println("  -l, --files-with-matches  只显示匹配的文件名")
 		fmt.Println("  --color[=WHEN]       高亮匹配文本 (auto, always, never)")
+		fmt.Println("  --text               强制将二进制文件作为文本处理")
 		fmt.Println("示例:")
 		fmt.Println("  gast grep -i \"hello\" .")
 		fmt.Println("  gast grep -n \"func main\" main.go")
@@ -33,6 +34,7 @@ func handleGrepCommand(args []string) {
 		CountOnly:    false,
 		FilesOnly:    false,
 		Color:        "auto",
+		Text:         false,
 	}
 	
 	var pattern string
@@ -63,6 +65,8 @@ func handleGrepCommand(args []string) {
 			options.FilesOnly = true
 		case "--color":
 			options.Color = "always"
+		case "--text":
+			options.Text = true
 		default:
 			// 检查是否是--color=value格式
 			if strings.HasPrefix(arg, "--color=") {

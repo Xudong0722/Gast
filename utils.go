@@ -110,6 +110,7 @@ type GrepOptions struct {
 	CountOnly    bool
 	FilesOnly    bool
 	Color        string // "auto", "always", "never"
+	Text         bool   // 强制将二进制文件作为文本处理
 }
 
 // Grep搜索结果
@@ -333,7 +334,11 @@ func processGrepTarget(target string, regex *regexp.Regexp, options *GrepOptions
 			return 0
 		}
 	} else {
-		return grepInFile(target, regex, options)
+		if options.Text || isTextFile(target) {
+			return grepInFile(target, regex, options)
+		} else {
+			return 0
+		}
 	}
 }
 
@@ -346,7 +351,7 @@ func grepInDirectory(dir string, regex *regexp.Regexp, options *GrepOptions) int
 			return err
 		}
 		
-		if !info.IsDir() && isTextFile(path) {
+		if !info.IsDir() && (options.Text || isTextFile(path)) {
 			matches := grepInFile(path, regex, options)
 			totalMatches += matches
 		}
@@ -370,41 +375,32 @@ func grepInFile(filename string, regex *regexp.Regexp, options *GrepOptions) int
 	}
 	defer file.Close()
 	
-	scanner := bufio.NewScanner(file)
+	reader := bufio.NewReader(file)
 	lineNum := 0
 	matchCount := 0
 	hasMatch := false
 	
-	for scanner.Scan() {
-		lineNum++
-		line := scanner.Text()
-		
-		matches := regex.FindAllString(line, -1)
-		isMatch := len(matches) > 0
-		
-		// 处理反向匹配
-		if options.InvertMatch {
-			isMatch = !isMatch
-		}
-		
-		if isMatch {
-			matchCount++
-			hasMatch = true
-			
-			if !options.CountOnly && !options.FilesOnly {
-				result := &GrepResult{
-					Filename: filename,
-					LineNum:  lineNum,
-					Line:     line,
-					Matches:  matches,
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			if err == io.EOF {
+				// 处理文件末尾没有换行符的情况
+				if len(line) > 0 {
+					lineNum++
+					processLine(line, filename, lineNum, regex, options, &matchCount, &hasMatch)
 				}
-				printGrepResult(result, options)
+				break
 			}
+			fmt.Printf("读取文件错误 %s: %v\n", filename, err)
+			break
 		}
-	}
-	
-	if err := scanner.Err(); err != nil {
-		fmt.Printf("读取文件错误 %s: %v\n", filename, err)
+		
+		lineNum++
+		// 移除行尾的换行符
+		line = strings.TrimSuffix(line, "\n")
+		line = strings.TrimSuffix(line, "\r")
+		
+		processLine(line, filename, lineNum, regex, options, &matchCount, &hasMatch)
 	}
 	
 	// 输出统计信息
@@ -415,6 +411,32 @@ func grepInFile(filename string, regex *regexp.Regexp, options *GrepOptions) int
 	}
 	
 	return matchCount
+}
+
+// 处理单行匹配
+func processLine(line string, filename string, lineNum int, regex *regexp.Regexp, options *GrepOptions, matchCount *int, hasMatch *bool) {
+	matches := regex.FindAllString(line, -1)
+	isMatch := len(matches) > 0
+	
+	// 处理反向匹配
+	if options.InvertMatch {
+		isMatch = !isMatch
+	}
+	
+	if isMatch {
+		*matchCount++
+		*hasMatch = true
+		
+		if !options.CountOnly && !options.FilesOnly {
+			result := &GrepResult{
+				Filename: filename,
+				LineNum:  lineNum,
+				Line:     line,
+				Matches:  matches,
+			}
+			printGrepResult(result, options)
+		}
+	}
 }
 
 // 打印grep结果
