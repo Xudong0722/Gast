@@ -35,8 +35,30 @@ make install
 ### 直接编译
 
 ```bash
+# Linux/macOS
 go build -o gast .
+
+# Windows
+go build -o gast.exe .
 ```
+
+### Windows 构建
+
+Windows用户有多种构建选择：
+
+```cmd
+# 方法1: 使用PowerShell脚本 (推荐)
+.\build.ps1
+
+# 方法2: 使用批处理脚本
+.\build.bat
+
+# 方法3: 使用CMake
+mkdir cmake-build && cd cmake-build
+cmake .. && cmake --build .
+```
+
+详细的Windows构建说明请参考 [BUILD_WINDOWS.md](BUILD_WINDOWS.md)
 
 ## 使用方法
 
@@ -208,8 +230,12 @@ make release
 ├── cmd_interactive.go     # 交互模式
 ├── config.go              # 配置文件处理
 ├── utils.go               # 工具函数和核心功能
-├── Makefile               # 构建脚本
+├── Makefile               # Linux/macOS构建脚本
+├── CMakeLists.txt         # CMake跨平台构建配置
+├── build.bat              # Windows批处理构建脚本
+├── build.ps1              # Windows PowerShell构建脚本
 ├── .gitignore             # Git忽略文件
+├── BUILD_WINDOWS.md       # Windows构建说明
 ├── ARCHITECTURE.md        # 架构说明文档
 └── README.md              # 项目文档
 ```

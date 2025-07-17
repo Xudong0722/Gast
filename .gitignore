@@ -62,3 +62,15 @@ coverage.html
 
 # Test cache
 .test_cache/
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+CTestTestfile.cmake
+_deps
+install_manifest.txt
+compile_commands.json
+
+# Windows build scripts logs
+*.log
