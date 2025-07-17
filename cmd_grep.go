@@ -16,10 +16,12 @@ func handleGrepCommand(args []string) {
 		fmt.Println("  -v, --invert-match   反向匹配")
 		fmt.Println("  -c, --count          只显示匹配行数")
 		fmt.Println("  -l, --files-with-matches  只显示匹配的文件名")
+		fmt.Println("  --color[=WHEN]       高亮匹配文本 (auto, always, never)")
 		fmt.Println("示例:")
 		fmt.Println("  gast grep -i \"hello\" .")
 		fmt.Println("  gast grep -n \"func main\" main.go")
 		fmt.Println("  gast grep -r \"TODO\" src/")
+		fmt.Println("  gast grep --color=auto \"pattern\" file.txt")
 		return
 	}
 	
@@ -30,6 +32,7 @@ func handleGrepCommand(args []string) {
 		InvertMatch:  false,
 		CountOnly:    false,
 		FilesOnly:    false,
+		Color:        "auto",
 	}
 	
 	var pattern string
@@ -58,9 +61,22 @@ func handleGrepCommand(args []string) {
 			options.CountOnly = true
 		case "-l", "--files-with-matches":
 			options.FilesOnly = true
+		case "--color":
+			options.Color = "always"
 		default:
-			fmt.Printf("未知选项: %s\n", arg)
-			return
+			// 检查是否是--color=value格式
+			if strings.HasPrefix(arg, "--color=") {
+				colorValue := arg[8:] // 去掉"--color="
+				if colorValue == "auto" || colorValue == "always" || colorValue == "never" {
+					options.Color = colorValue
+				} else {
+					fmt.Printf("无效的颜色选项: %s (可用: auto, always, never)\n", colorValue)
+					return
+				}
+			} else {
+				fmt.Printf("未知选项: %s\n", arg)
+				return
+			}
 		}
 		i++
 	}

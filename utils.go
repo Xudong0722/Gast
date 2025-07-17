@@ -16,6 +16,58 @@ import (
 	"time"
 )
 
+// ANSI颜色代码
+const (
+	ColorReset  = "\033[0m"
+	ColorRed    = "\033[31m"
+	ColorGreen  = "\033[32m"
+	ColorYellow = "\033[33m"
+	ColorBlue   = "\033[34m"
+	ColorPurple = "\033[35m"
+	ColorCyan   = "\033[36m"
+	ColorWhite  = "\033[37m"
+	ColorBold   = "\033[1m"
+)
+
+// 检查终端是否支持颜色
+func isTerminalColorSupported() bool {
+	// 检查TERM环境变量
+	term := os.Getenv("TERM")
+	if term == "" || term == "dumb" {
+		return false
+	}
+	
+	// 检查是否是终端
+	if !isTerminal(os.Stdout) {
+		return false
+	}
+	
+	return true
+}
+
+// 检查文件描述符是否是终端
+func isTerminal(f *os.File) bool {
+	fi, err := f.Stat()
+	if err != nil {
+		return false
+	}
+	return fi.Mode()&os.ModeCharDevice != 0
+}
+
+// 应该使用颜色
+func shouldUseColor(colorOption string) bool {
+	switch colorOption {
+	case "always":
+		return true
+	case "never":
+		return false
+	case "auto":
+		return isTerminalColorSupported()
+	default:
+		return false
+	}
+}
+
 // Grep选项
 type GrepOptions struct {
 	IgnoreCase   bool
@@ -24,6 +76,7 @@ type GrepOptions struct {
 	InvertMatch  bool
 	CountOnly    bool
 	FilesOnly    bool
+	Color        string // "auto", "always", "never"
 }
 
 // Grep搜索结果
@@ -334,13 +387,22 @@ func grepInFile(filename string, regex *regexp.Regexp, options *GrepOptions) int
 // 打印grep结果
 func printGrepResult(result *GrepResult, options *GrepOptions) {
 	var output strings.Builder
+	useColor := shouldUseColor(options.Color)
 	
-	// 文件名
-	output.WriteString(result.Filename)
+	// 文件名 (紫色)
+	if useColor {
+		output.WriteString(ColorPurple + result.Filename + ColorReset)
+	} else {
+		output.WriteString(result.Filename)
+	}
 	
-	// 行号
+	// 行号 (绿色)
 	if options.ShowLineNum {
-		output.WriteString(fmt.Sprintf(":%d", result.LineNum))
+		if useColor {
+			output.WriteString(":" + ColorGreen + fmt.Sprintf("%d", result.LineNum) + ColorReset)
+		} else {
+			output.WriteString(fmt.Sprintf(":%d", result.LineNum))
+		}
 	}
 	
 	output.WriteString(": ")
@@ -348,9 +410,30 @@ func printGrepResult(result *GrepResult, options *GrepOptions) {
 	// 高亮匹配的文本
 	line := result.Line
 	if len(result.Matches) > 0 && !options.InvertMatch {
-		for _, match := range result.Matches {
-			// 简单的高亮显示（用方括号包围）
-			line = strings.ReplaceAll(line, match, "["+match+"]")
+		// 为了避免重复替换，我们需要按长度排序，从长到短进行替换
+		matches := make([]string, len(result.Matches))
+		copy(matches, result.Matches)
+		
+		// 简单的按长度排序（冒泡排序）
+		for i := 0; i < len(matches); i++ {
+			for j := i + 1; j < len(matches); j++ {
+				if len(matches[i]) < len(matches[j]) {
+					matches[i], matches[j] = matches[j], matches[i]
+				}
+			}
+		}
+		
+		if useColor {
+			// 使用ANSI颜色代码高亮匹配的文本
+			for _, match := range matches {
+				highlightedMatch := ColorRed + ColorBold + match + ColorReset
+				line = strings.ReplaceAll(line, match, highlightedMatch)
+			}
+		} else {
+			// 使用方括号包围匹配的文本
+			for _, match := range matches {
+				line = strings.ReplaceAll(line, match, "["+match+"]")
+			}
 		}
 	}
 	

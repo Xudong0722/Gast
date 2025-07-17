@@ -72,6 +72,7 @@ func interactiveMode() {
 					InvertMatch: false,
 					CountOnly:   false,
 					FilesOnly:   false,
+					Color:       "auto",
 				}
 				grepSearch(pattern, targets, options)
 			}
