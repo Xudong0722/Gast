@@ -111,6 +111,7 @@ type GrepOptions struct {
 	FilesOnly    bool
 	Color        string // "auto", "always", "never"
 	Text         bool   // 强制将二进制文件作为文本处理
+	Context      int    // -C 上下文行数
 }
 
 // Grep搜索结果
@@ -374,6 +375,11 @@ func grepInFile(filename string, regex *regexp.Regexp, options *GrepOptions) int
 		return 0
 	}
 	defer file.Close()
+	
+	// 如果需要上下文显示，使用不同的处理方式
+	if options.Context > 0 {
+		return grepInFileWithContext(file, filename, regex, options)
+	}
 	
 	reader := bufio.NewReader(file)
 	lineNum := 0
@@ -660,4 +666,200 @@ func processSpecialChars(line string, options *CatOptions) string {
 	}
 	
 	return result.String()
+}
+
+// 上下文区间结构
+type contextRange struct {
+	start     int
+	end       int
+	matchLines map[int]bool // 记录哪些行是匹配行
+}
+
+// 带上下文的grep搜索
+func grepInFileWithContext(file *os.File, filename string, regex *regexp.Regexp, options *GrepOptions) int {
+	// 读取所有行
+	var lines []string
+	reader := bufio.NewReader(file)
+	
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			if err == io.EOF {
+				if len(line) > 0 {
+					// 移除行尾的换行符
+					line = strings.TrimSuffix(line, "\n")
+					line = strings.TrimSuffix(line, "\r")
+					lines = append(lines, line)
+				}
+				break
+			}
+			fmt.Printf("读取文件错误 %s: %v\n", filename, err)
+			return 0
+		}
+		
+		// 移除行尾的换行符
+		line = strings.TrimSuffix(line, "\n")
+		line = strings.TrimSuffix(line, "\r")
+		lines = append(lines, line)
+	}
+	
+	if len(lines) == 0 {
+		return 0
+	}
+	
+	// 找到所有匹配的行
+	var matchLines []int
+	matchCount := 0
+	hasMatch := false
+	
+	for i, line := range lines {
+		matches := regex.FindAllString(line, -1)
+		isMatch := len(matches) > 0
+		
+		if options.InvertMatch {
+			isMatch = !isMatch
+		}
+		
+		if isMatch {
+			matchLines = append(matchLines, i)
+			matchCount++
+			hasMatch = true
+		}
+	}
+	
+	// 如果只需要统计信息
+	if options.CountOnly {
+		fmt.Printf("%s: %d\n", filename, matchCount)
+		return matchCount
+	}
+	
+	if options.FilesOnly {
+		if hasMatch {
+			fmt.Println(filename)
+		}
+		return matchCount
+	}
+	
+	if len(matchLines) == 0 {
+		return 0
+	}
+	
+	// 计算上下文区间
+	ranges := calculateContextRanges(matchLines, options.Context, len(lines))
+	
+	// 输出结果
+	for i, r := range ranges {
+		if i > 0 {
+			fmt.Println("--") // 分隔符
+		}
+		
+		for lineIdx := r.start; lineIdx <= r.end; lineIdx++ {
+			lineNum := lineIdx + 1
+			line := lines[lineIdx]
+			isMatchLine := r.matchLines[lineIdx]
+			
+			if isMatchLine {
+				// 匹配行
+				matches := regex.FindAllString(line, -1)
+				result := &GrepResult{
+					Filename: filename,
+					LineNum:  lineNum,
+					Line:     line,
+					Matches:  matches,
+				}
+				printGrepResult(result, options)
+			} else {
+				// 上下文行
+				prefix := "-"
+				if options.ShowLineNum {
+					prefix = fmt.Sprintf("%s-%d-", ColorGreen, lineNum)
+					if shouldUseColor(options.Color) {
+						prefix = fmt.Sprintf("%s%d%s-", ColorGreen, lineNum, ColorReset)
+					} else {
+						prefix = fmt.Sprintf("%d-", lineNum)
+					}
+				}
+				fmt.Printf("%s%s\n", prefix, line)
+			}
+		}
+	}
+	
+	return matchCount
+}
+
+// 计算上下文区间，合并重叠的区间
+func calculateContextRanges(matchLines []int, context int, totalLines int) []contextRange {
+	if len(matchLines) == 0 {
+		return nil
+	}
+	
+	var ranges []contextRange
+	
+	for _, matchIdx := range matchLines {
+		start := matchIdx - context
+		end := matchIdx + context
+		
+		// 确保不越界
+		if start < 0 {
+			start = 0
+		}
+		if end >= totalLines {
+			end = totalLines - 1
+		}
+		
+		newRange := contextRange{
+			start:      start,
+			end:        end,
+			matchLines: map[int]bool{matchIdx: true},
+		}
+		
+		ranges = append(ranges, newRange)
+	}
+	
+	// 合并重叠的区间
+	merged := mergeContextRanges(ranges)
+	return merged
+}
+
+// 合并重叠的上下文区间
+func mergeContextRanges(ranges []contextRange) []contextRange {
+	if len(ranges) <= 1 {
+		return ranges
+	}
+	
+	// 按起始位置排序
+	for i := 0; i < len(ranges); i++ {
+		for j := i + 1; j < len(ranges); j++ {
+			if ranges[i].start > ranges[j].start {
+				ranges[i], ranges[j] = ranges[j], ranges[i]
+			}
+		}
+	}
+	
+	var merged []contextRange
+	current := ranges[0]
+	
+	for i := 1; i < len(ranges); i++ {
+		next := ranges[i]
+		
+		// 如果区间重叠或相邻，合并它们
+		if current.end >= next.start-1 {
+			// 合并区间
+			if next.end > current.end {
+				current.end = next.end
+			}
+			// 合并匹配行
+			for lineIdx := range next.matchLines {
+				current.matchLines[lineIdx] = true
+			}
+		} else {
+			// 不重叠，添加当前区间到结果
+			merged = append(merged, current)
+			current = next
+		}
+	}
+	
+	// 添加最后一个区间
+	merged = append(merged, current)
+	return merged
 } 

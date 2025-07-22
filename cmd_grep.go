@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -16,12 +17,14 @@ func handleGrepCommand(args []string) {
 		fmt.Println("  -v, --invert-match   反向匹配")
 		fmt.Println("  -c, --count          只显示匹配行数")
 		fmt.Println("  -l, --files-with-matches  只显示匹配的文件名")
+		fmt.Println("  -C, --context=NUM    显示匹配行前后各NUM行")
 		fmt.Println("  --color[=WHEN]       高亮匹配文本 (auto, always, never)")
 		fmt.Println("  --text               强制将二进制文件作为文本处理")
 		fmt.Println("示例:")
 		fmt.Println("  gast grep -i \"hello\" .")
 		fmt.Println("  gast grep -n \"func main\" main.go")
 		fmt.Println("  gast grep -r \"TODO\" src/")
+		fmt.Println("  gast grep -C 3 \"error\" file.txt")
 		fmt.Println("  gast grep --color=auto \"pattern\" file.txt")
 		return
 	}
@@ -35,6 +38,7 @@ func handleGrepCommand(args []string) {
 		FilesOnly:    false,
 		Color:        "auto",
 		Text:         false,
+		Context:      0,
 	}
 	
 	var pattern string
@@ -67,6 +71,20 @@ func handleGrepCommand(args []string) {
 			options.Color = "always"
 		case "--text":
 			options.Text = true
+		case "-C":
+			// -C 后面应该跟一个数字
+			if i+1 >= len(args) {
+				fmt.Println("错误: -C 选项需要指定上下文行数")
+				return
+			}
+			i++
+			contextStr := args[i]
+			contextNum, err := strconv.Atoi(contextStr)
+			if err != nil || contextNum < 0 {
+				fmt.Printf("错误: 无效的上下文行数: %s\n", contextStr)
+				return
+			}
+			options.Context = contextNum
 		default:
 			// 检查是否是--color=value格式
 			if strings.HasPrefix(arg, "--color=") {
@@ -77,6 +95,14 @@ func handleGrepCommand(args []string) {
 					fmt.Printf("无效的颜色选项: %s (可用: auto, always, never)\n", colorValue)
 					return
 				}
+			} else if strings.HasPrefix(arg, "--context=") {
+				contextStr := arg[10:] // 去掉"--context="
+				contextNum, err := strconv.Atoi(contextStr)
+				if err != nil || contextNum < 0 {
+					fmt.Printf("错误: 无效的上下文行数: %s\n", contextStr)
+					return
+				}
+				options.Context = contextNum
 			} else {
 				fmt.Printf("未知选项: %s\n", arg)
 				return

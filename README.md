@@ -13,7 +13,7 @@
 - 🌐 **网络工具** - URL连接测试
 - 🔐 **文件哈希** - MD5/SHA256哈希计算
 - 📄 **文件查看** - 类似cat的文件内容显示功能，支持行号、特殊字符显示
-- 🔍 **文本搜索** - 类似grep的强大文本搜索功能
+- 🔍 **文本搜索** - 类似grep的强大文本搜索功能，支持上下文显示
 - 🎨 **颜色支持** - 支持ANSI颜色高亮显示匹配文本
 - 📱 **交互模式** - 支持交互式命令行
 
@@ -161,6 +161,13 @@ cmake .. && cmake --build .
 
 # 组合选项
 ./gast grep -r -i -n "error" .
+
+# 显示上下文（匹配行前后各N行）
+./gast grep -C 2 "error" file.txt        # 显示前后各2行
+./gast grep --context=3 "func" main.go   # 显示前后各3行
+
+# 组合上下文与其他选项
+./gast grep -n -C 1 "TODO" src/         # 显示行号和上下文
 
 # 颜色支持
 ./gast grep --color=auto "pattern" file.txt    # 自动检测终端颜色支持
